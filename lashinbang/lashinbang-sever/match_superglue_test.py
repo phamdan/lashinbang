@@ -15,6 +15,7 @@ from scipy.spatial.distance import euclidean
 import matplotlib.pyplot as plt
 from datetime import datetime
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
+# device = 'cpu'
 torch.set_grad_enabled(False)
 RANSAC_THRESH = 10
 SIZE_0= 720
@@ -53,29 +54,36 @@ class SuperglueMatching:
         self.vis = None
 
     #find match 
-    def find_matches_superglue(self, second_img, debug=True):
+    def find_matches_superglue(self, second_img, debug=True,start_time=None,index_element=None):
+        self.matching.index_element=index_element
         if second_img is not None:
             self.gray_second = self.resize_prop_rect(second_img,  img_size=SIZE_1)
             print("gray2", self.gray_second.shape)
             self.inp1 = convert_img_to_tensor(self.gray_second, device)
+        
         ret_matches = False
         
         if self.inp1 is None:
             return ret_matches, None, None, None, None
         # print("souce shape" , self.gray_first.shape,self.gray_second .shape )
         pred =self.matching({'image0': self.inp0, 'image1': self.inp1})
+
+        # check_now= datetime.now()
         pred = {k: v[0].cpu().numpy() for k, v in pred.items()}
         self.kpts0, self.kpts1 = pred['keypoints0'], pred['keypoints1']
         self.matches, self.conf = pred['matches0'], pred['matching_scores0']
+        
+        
         # Keep the matching keypoints.
         valid = self.matches > -1
         mkpts0 = self.kpts0[valid]
         
+    
         ret_matches, score_matches = self.is_relevant_superglue()
         if debug:
             self.vis = self.draw_matches()
             cv2.imwrite("output.jpg" , self.vis )
-        
+        # print("keep matching",datetime.now()-check_now)
         return ret_matches, score_matches
 
     @staticmethod
@@ -131,7 +139,7 @@ class SuperglueMatching:
             b = points[(i+1) % 4]
             c = points[(i+2) % 4]
             angle = self.angle_of_3_points(a, b, c)
-            print("Angle: ", angle)
+            # print("Angle: ", angle)
             if angle > 160 or angle < 20:
                 return False
         return True
@@ -317,7 +325,7 @@ if __name__ == '__main__':
     # bbxs=bbs
     # list_bad_new=query
     for i,value in enumerate(list_bad_new[11:12]):
-        now = datetime.now().time()
+        
         i=11
         # print("value",value)
         index= query.index(value)
@@ -362,34 +370,35 @@ if __name__ == '__main__':
         result_new=[]
         Ms=[]
         ret_matchess=[]
-        name= query[index].split("/")[-1].split(".")[0]
+        # name= query[index].split("/")[-1].split(".")[0]
 
-        if not os.path.exists(f"/media/anlab/data/lashinbang/lashinbang-server/out_put_test/{i}_{name}"):
-            os.mkdir(f"/media/anlab/data/lashinbang/lashinbang-server/out_put_test/{i}_{name}")
+        # if not os.path.exists(f"/media/anlab/data/lashinbang/lashinbang-server/out_put_test/{i}_{name}"):
+        #     os.mkdir(f"/media/anlab/data/lashinbang/lashinbang-server/out_put_test/{i}_{name}")
         # print("name",name)
 
         # exit()
+        
+        gray0 = cv2.cvtColor(image0, cv2.COLOR_BGR2GRAY)
+        M = SuperglueMatching(gray0)
+        Ms.append(M)
+
+        
+        times=[]
         for j,element in enumerate(image_correspond[index][:1]):
-            print("checkkkkk",dataset.index(element))
+            start=datetime.now()
             index_element= dataset.index(element)
             # print("/media/anlab/data/kbooks_bl/"+element)
             image1 = cv2.imread('/media/anlab/data/kbooks_bl/'+element)
-            # image1=cv2.resize(image1,(max_size0,max_size0))
-
-            gray0 = cv2.cvtColor(image0, cv2.COLOR_BGR2GRAY)
             gray1 = cv2.cvtColor(image1, cv2.COLOR_BGR2GRAY)
-            
-            M = SuperglueMatching(gray0,index_element=index_element)
-            # M.index_element = index_element
-            Ms.append(M)
-            ret_matches, score = M.find_matches_superglue( gray1, debug=True)
-            print("ret_matches", ret_matches, score )
-            now1 = datetime.now().time()
-            print("now",now)
-            print("now1",now1)
+            print("check gray",datetime.now()-start)
+            ret_matches, score = M.find_matches_superglue( gray1, debug=True,start_time=start,index_element=index_element)
+            # print("ret_matches", ret_matches, score )
+            total_time=datetime.now()-start
+            print("total time",total_time)
+            times.append(total_time.total_seconds())
             scores.append(score)
             ret_matchess.append(ret_matches)
-            
+        # print("sum", sum(times)/10)
           
         scores=np.array(scores)
         idxs= np.argsort(-scores)
